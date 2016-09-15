@@ -1,0 +1,41 @@
+# This pipeline builds the image that's used for building services.
+# The dockerfile contains some basics that are needed to run builds.
+
+resources:
+- name: monorepo
+  type: git
+  source:
+    uri: {{git_repository}}
+    branch: master
+    private_key: {{private_key}}
+
+- name: container-registry
+  type: docker-image
+  source:
+    repository: {{pants_builder_docker_registry}}
+    username: _json_key
+    password: {{service_account_keyfile}}
+    email: does-not-matter@example.com
+
+jobs:
+- name: build
+  plan:
+  - get: monorepo
+    trigger: true
+  - task: bundle-pants-builder
+    config:
+      inputs:
+        - name: monorepo
+      platform: linux
+      image_resource:
+        type: docker-image
+        source:
+          repository: ubuntu
+          tag: "16.04"
+      run:
+        path: ./monorepo/infrastructure/dockerfiles/pants-builder/bundle.sh
+        args: [monorepo/, docker-bundle/]
+      outputs:
+        - name: docker-bundle
+  - put: container-registry
+    params: {build: docker-bundle/}

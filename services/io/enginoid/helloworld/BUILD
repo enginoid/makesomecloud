@@ -1,0 +1,21 @@
+jvm_app(
+  name='helloworld',
+  binary=':server',
+  deployjar=True,
+  bundles=[
+    bundle(
+      fileset=[
+        'Dockerfile',
+        'service.yaml.tpl',
+        'config.json',
+      ]
+    )
+  ],
+)
+
+jvm_binary(name='server',
+  main='io.enginoid.helloworld.main.HttpApp',
+  dependencies=[
+    'src/scala/io/enginoid/helloworld/main',
+  ],
+)

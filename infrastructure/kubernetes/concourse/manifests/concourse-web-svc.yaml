@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: concourse-web
+spec:
+  ports:
+  - port: 80
+    targetPort: 8080
+    name: http
+  - port: 8080
+    name: atc
+  - port: 2222
+    name: tsa
+  selector:
+    name: concourse-web
+  type: LoadBalancer

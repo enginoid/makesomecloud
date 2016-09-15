@@ -1,0 +1,7 @@
+{
+  "name": "helloworld",
+  "auto_deploy": true,
+  "owners": [
+    "fred@pyth.net"
+  ]
+}

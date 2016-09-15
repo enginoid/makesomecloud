@@ -1,0 +1,53 @@
+# This is the main service build pipeline that's responsible for
+# running tests and deploying a service.
+
+# This is how it works:
+#   - pulls the repository
+#   - bundles the 'helloworld' service
+#   - pushes a container for the service.
+
+resources:
+- name: monorepo
+  type: git
+  source:
+    uri: {{git_repository}}
+    branch: master
+    private_key: {{private_key}}
+
+# Authentiction with the registry via a keyfile for a service account.
+# https://cloud.google.com/container-registry/docs/advanced-authentication
+- name: container-registry
+  type: docker-image
+  source:
+    repository: {{helloworld_service_container_registry}}
+    username: _json_key
+    password: {{service_account_keyfile}}
+    email: does-not-matter@example.com
+
+jobs:
+- name: build
+  plan:
+  - get: monorepo
+    trigger: true
+  - task: build-bundle
+    config:
+      inputs:
+        - name: monorepo
+      platform: linux
+      image_resource:
+        type: docker-image
+        source:
+          repository: {{pants_builder_docker_registry}}
+          username: _json_key
+          password: {{service_account_keyfile}}
+          email: does-not-matter@example.com
+      run:
+        path: ./monorepo/scripts/bundle.sh
+        args: [helloworld, service-bundle]
+      outputs:
+        - name: service-bundle
+  - put: container-registry
+    params:
+      build: service-bundle
+      tag: service-bundle/version
+

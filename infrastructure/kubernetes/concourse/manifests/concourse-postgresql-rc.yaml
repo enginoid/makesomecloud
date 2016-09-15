@@ -1,0 +1,37 @@
+apiVersion: v1
+kind: ReplicationController
+metadata:
+  name: concourse-postgresql
+spec:
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        name: concourse-postgresql
+    spec:
+      containers:
+      - name: concourse-postgresql
+        image: postgres:9.5
+        env:
+        - name: POSTGRES_DB
+          value: concourse
+        - name: POSTGRES_USER
+          valueFrom:
+            secretKeyRef:
+              name: concourse-postgresql-secrets
+              key: username
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: concourse-postgresql-secrets
+              key: password
+        - name: PGDATA
+          value: /var/lib/postgresql/data/pgdata
+        ports:
+        - containerPort: 5432
+        volumeMounts:
+        - name: postgresql-storage
+          mountPath: /var/lib/postgresql/data/pgdata
+      volumes:
+      - name: postgresql-storage
+        emptyDir: {}
