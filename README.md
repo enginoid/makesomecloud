@@ -16,16 +16,16 @@ I'm proud to state that this project incorporates all of these buzzwords:
 
 ## More concretely, what does this project actually offer?
 
-It's a way to Bootstrap a microservices infrastructure...
+It's a way to bootstrap a microservices infrastructure...
 
   * ...on Google Cloud Platform
   * ...in a reproducible way (via Terraform files + Kubernetes manifests + Concourse pipeline files)
   * ...freeing you from spending time on tedious essentials (e.g., setting up a bastion host)
   * ...but letting you continuously deploy (with Concourse)
   * ...a Finagle microservice (more languages to come!)
-  * ...that runs on Kubernetes
-  * ...and is stored in a monorepo (backed by Pants as a build system)
+  * ...that runs on Kubernetes,
   * ...is relatively cost-effective (thanks to GCP pricing and Kubernetes)
+  * ...and is stored in a monorepo (backed by Pants as a build system)
 
 ## What should I do with this?
 
@@ -62,7 +62,7 @@ Particularly, if it's not a priority for your organization to solve these challe
   * GCP
     * AWS has some pretty useful managed services that GCP does not (e.g., hosted Postgres).
     * Many GCP features are in alpha, so they're not production-recommended.
-    * Docs are sometimes a slightly tricky to navigate compared to AWS.
+    * Docs are sometimes slightly tricky to navigate compared to AWS.
   * Terraform:
     * Due to community size, GCP support is limited and not as battle-tested as AWS.
 
@@ -73,8 +73,14 @@ If the risk outweighs the reward, this is not a good starting point.
 ## High-level steps
 
   1. Clone the project
-  2. Configure (set up GCP project, )
-  3. Install `gcloud` and `terraform`
+  2. Configure a few things
+  3. Set up `gcloud`, `kubectl`, and `terraform`
+  4. Build your infrastructure with `terraform`
+  5. Deploy some Kubernetes pods
+  6. Set up the CI pipeline and build the service
+  7. Deploy the service
+  8. Build out your infrastructure
+  9. (Optional) Destroy your infrastructure
 
 (The plan is to eliminate steps (4) and (7) redundant.)
 
@@ -87,7 +93,7 @@ If the risk outweighs the reward, this is not a good starting point.
   1. Clone the source repository.
   2. Clone the secrets repository.
 
-#### 2. Configure
+#### 2. Configure a few things
 
   1. **Create your GCP project.** If you don't have an account, sign up for one. After that, create your first project and take note of the project name.
 
@@ -121,7 +127,7 @@ If the risk outweighs the reward, this is not a good starting point.
       --iam-account concourse@<gcp_project_name>.iam.gserviceaccount.com
     ```
 
-    4. **Allow the concourse worker to read to and write from the container registry.** These steps are necessary because a nonempty registry is a prerequisite for setting registry permissions:
+    4. **Allow the Concourse worker to read to and write from the container registry.** These steps are necessary because a nonempty registry is a prerequisite for setting registry permissions:
 
     ```
     # Push to the repo from a privileged account. We can't grant permissions on the
@@ -150,7 +156,7 @@ If the risk outweighs the reward, this is not a good starting point.
 
   * **Set up kubectl.** `gcloud components install kubectl`
 
-#### 3. Build your infrastructure
+#### 4. Build your infrastructure with `terraform`
 
 Navigate to `infrastructure/terraform`. To see what resources Terraform will create, run this:
 
@@ -164,9 +170,9 @@ To execute those changes, run this:
 terraform apply
 ```
 
-> **About the bastion host.** The default network for GCP allows external access to all services on the network. This project creates a new network that's more restrictive. Internal machines on that network can communicate with each other, but they cannot be reached from the outside world unless you create a specific firewall rule to allow that access (alternatively, they may be exposed through a load balancer). This reduces the attack surface of the infrastructure, but imposes a requirement to access internal services through SSH tunnels via the bastion host. The bastion host is configured to be accessible on port 22 to outsiders, but has access to all machines in the internal network.
+> **About the bastion host.** The default network for GCP allows external access to all services on the network. This project creates a new network that's more restrictive. The new network is necessary because Terraform changes are additive; Terraform by default doesn't interfere with preexisting resources. Internal machines on this network can communicate with each other, but they cannot be reached from the outside world unless you create a specific firewall rule to allow that access (alternatively, they may be exposed through a load balancer). This reduces the attack surface of the infrastructure, but imposes a requirement to access internal services through SSH tunnels via the bastion host. The bastion host is configured to be accessible on port 22 to outsiders, but has access to all machines in the internal network.
 
-After the command has run, you will get the IP of your Kubernetes cluster. To exercise that both the bastion and the Kubernetes are working properly, you can execute this command that gets a list of available services from Kubernetes through the bastion host:
+After the command has finished running, you will get the IP of your Kubernetes cluster. To exercise that both the bastion host and the Kubernetes are working properly, you can execute this command that gets a list of available services from Kubernetes through the bastion host:
 
 ```
 ./scripts/kubectl.sh get services
@@ -174,7 +180,7 @@ After the command has run, you will get the IP of your Kubernetes cluster. To ex
 
 > **About `scripts/kubectl.sh`.** `kubectl.sh` takes care of discovering the bastion host and Kubernetes cluster, creating a tunnel from your computer to the Kubernetes cluster, and executing an arbitrary `kubectl` command through that tunnel.
 
-#### 4. Deploy some Kubernetes containers
+#### 4. Deploy some Kubernetes pods
 
 There will be more stuff running on Kubernetes going forward (e.g., Consul, Vault). Right now, it's just Concourse, the continuous integration system. To set it up, first we have to make our secrets available to Kubernetes. Because our secrets are stored in a separate directory, we'll apply them like this:
 
@@ -188,7 +194,7 @@ Then, we'll apply the manifests for the `concourse-web` and `concourse-postgresq
 scripts/kubectl.sh apply -f infrastructure/kubernetes/concourse/manifests/
 ```
 
-Our two services should now be right there:
+Our two services should now be in the service list:
 
 ```
 $ ./scripts/kubectl.sh get services
@@ -206,7 +212,7 @@ To verify that everything is working, browse to the Concourse web console using 
 
 When you run a continuous integration pipeline, the work in that pipeline is performed by a Concourse worker. This worker will fetch your source code and orchestrate containers to make sure that your CI job can run. Because this orchestrates Docker containers and would need privileged container access on Kubernetes, it runs in an instance group rather than in Kubernetes containers.
 
-Because this project does not include service discovery yet, the workers discover the `concourse-web` hosts through instance metadata. A startup script reads that metadata and sets it as an environment variable accessible to the service. In order to allow the worker instances to communicate with `concourse-web`, we have to update the instance metadata with the external IP of the `concourse-web` Kubernetes service that we just created.
+Because this project does not have service discovery yet, the workers discover the `concourse-web` hosts through instance metadata. A startup script reads that metadata and sets it as an environment variable accessible to the service. In order to allow the worker instances to communicate with `concourse-web`, we have to update the instance metadata for the `concourse-worker` instance group with the external IP of the `concourse-web` Kubernetes service that we just created.
 
 To do this, change the `concourse_tsa_host` in `terraform.tfvars` to be the external IP we just received:
 
@@ -233,7 +239,7 @@ This is saying two things:
   * The change we made to the instance template is going to trigger a new instance template to be created.
   * The instance group manager that uses this template will be modified to use a new instance template.
 
-When an instance group is updated, the default Terraform behavior is to recreate the instances. This will cause the instance metadata to be updated, which in turn will allow the startup script to read the correct IP address of the `concourse-web` host.
+When an instance group is updated, the default Terraform behavior is to recreate the instances. This will cause the instance metadata to be updated, which in turn will allow the startup script on the newly launched instance to read the correct IP address of the `concourse-web` host.
 
 Run `terraform apply` to execute this change.
 
@@ -249,21 +255,21 @@ fly --target "monorepo" login --concourse-url "http://104.199.4.134/"
 
 The default username and password are `ci` and `password`, respectively. This information comes from the Kubernetes secrets file for `concourse-web`.
 
-Now we can set up the pipeline. The YAML files that describe the continuous integration pipelines are templates, so you'll have to pass along any variables in the tempalte through the `fly` command. The `./scripts/set-pipeline.sh` takes care of setting these variables to the correct values given your configuration in `config/` and secrets in the secrets directory, so you should use that instead of using `fly` directly.
+Now we can set up the pipeline. The YAML files that describe the continuous integration pipelines are templates, so you'll have to pass along any variables in the template through the `fly` command. The `./scripts/set-pipeline.sh` script takes care of setting these variables to the correct values given your configuration in `config/` and secrets in the secrets directory, so you should use that instead of using `fly` directly.
 
-Let's start by creating the CI pipeline for `pants-builder`. This is a pipeline that creates the `pants-builder` docker image
+Let's start by creating the CI pipeline for `pants-builder`. This is a pipeline that creates the `pants-builder` docker image.
 
 ```
 ./scripts/set-pipeline.sh pants-builder
 ```
 
-> **About the `pants-builder` docker image.** This image as the base image to build services in the `services` pipeline. The `pants-builder` has the right system dependencies to compile your tools, but it also containers a compilation cache for your entire project that's used when building services. This means that every time you run a service build, your packages will all have been compiled recently so the build will be incremental and therefore very fast for the common case where only a few files have been changed. This is similar to the approach of using a shared build cache, but prevents maintenance and locking issues due to mutable state shared between multiple workers.
+> **About the `pants-builder` docker image.** This image is the base image to build services in the `services` pipeline. The `pants-builder` has the correct system dependencies to compile your tools, but it also contains a compilation cache for your entire project that's used when building services. This means that every time you run a service build, your packages will all have been compiled recently into the latest `pants-build` container, so the build will be incremental and therefore very fast for the common case where only a few files have been changed. This is similar to the approach of using a shared build cache, but prevents maintenance and locking issues due to mutable state shared between multiple workers.
 
 Now that your pipeline has been created, this is what you'll see in the console:
 
 ![image](https://cloud.githubusercontent.com/assets/62200/18583049/d6d1c4aa-7bf7-11e6-96e4-a227565cacf2.png)
 
-You need to unpause this pipeline to start the first build. After you've unpaused it, your first build will start and look something like this once it's finished running:
+You need to unpause this pipeline to start the first build. After you've unpaused it, your first build will start and look something like this once it has finished running:
 
 ![image](https://cloud.githubusercontent.com/assets/62200/18583103/0bc18d4e-7bf8-11e6-89e0-9484e12e10ff.png)
 
@@ -285,7 +291,7 @@ Using the commit ID from the last run, deploy your service.
 ./scripts/deploy.sh helloworld <service>
 ```
 
-Get the IP of the load balancer for the service:
+Get the IP of the load balancer for the `helloworld` service:
 
 ```
 $ scripts/kubectl.sh get service helloworld -o template --template='{{(index .status.loadBalancer.ingress 0).ip}}'
@@ -303,13 +309,13 @@ Hello, World!
 
 You now have an infrastructure that's almost entirely set up through declarative configuration. You can:
 
-  * Work on the `helloworld` service and push it. Once it has built, you can deploy it with `deploy.sh`.
+  * Work on the `helloworld` service and push it. It will build when you push, after which you can deploy it with `deploy.sh`.
   * Create more CI pipelines.
   * Make changes to your infrastructure via Terraform:
     * Deploy more instances.
-    * A performant pub/sub service via `google_pubsub_topic` and `google_pubsub_subscription`.
-    * A managed MySQL database via the `google_sql_*` resources.
-    * An HTTPS load balancer via `google_compute_ssl_certificate` and `google_compute_target_https_proxy`.
+    * Add a performant pub/sub service via `google_pubsub_topic` and `google_pubsub_subscription`.
+    * Add a managed MySQL database via the `google_sql_*` resources.
+    * Add an HTTPS load balancer via `google_compute_ssl_certificate` and `google_compute_target_https_proxy`.
     * Hook up your domain via the `google_dns_*` resources.
   * Deploy almost anything on Kubernetes.
 
@@ -319,15 +325,32 @@ To delete everything that was created in this project, run `terraform destroy`.
 
 # Aspirations
 
-Obviously, this project only provides the bare minimum. In order to effectively help bootstrap good infrastructure, we need:
+Obviously, this project only provides the bare minimum. In order to effectively help bootstrap good infrastructure, this monorepo should do a few things that it doesn't do today.
 
-  * A CI pipeline that builds any service.
-  * Automatic deployments.
-  * RPC between services.
-  * Examples of services in more programming languages.
-  * Structured logging for each service.
-  * All logs sent to a centralized place (e.g. Stackdriver Logging).
-  * Metric collection (e.g. Stackdriver, Prometheus)
-  * Proper service discovery of internal and external services (Consul).
-  * Secrets management that doesn't use a folder, and allows restricted access for services (Vault).
-  * ...
+  * When the monorepo is pushed, the CI system should...
+    * ...build any service that has changed in the commit via `./pants changed` (rather than the one hardcoded service).
+    * ...run unit tests.
+    * ...run integration tests using multiple containers that can interact.
+    * ...deploy the service by triggering a call to a deployment service that on a case-by-case basis...
+      * ...rolls out some services automatically (those marked with auto_deploy=true in their service config)
+      * ...otherwise waits for human approval of the before starting a rollout.
+  * The demo services themselves should support...
+    * Codegen-based RPC via thrift/protobuf, where clients are automatically regenerated and deployed when the server changes.
+    * Examples in more programming languages.
+    * Structured logging.
+    * Good unit test examples.
+    * Good integration test examples.
+  * Centralized logging.
+  * Metrics collection and alerting (e.g., Stackdriver, Prometheus).
+    * Metrics should be easy to track down by service.
+    * Metrics should be attached to a description.
+  * Service discovery (e.g., Consul).
+    * Support discovery of external services (e.g., Pub/Sub, Cloud SQL databases).
+    * Support discovery of Kubernetes services.
+    * Support discovery of GCP instances.
+  * Secrets management.
+    * Based on encryption, rather than folders.
+    * Backed up.
+    * Used by services, and updated via watches (e.g., confd or similar).
+
+Contributions or ideas in any of these areas are much appreciated!
