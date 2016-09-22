@@ -101,7 +101,7 @@ If the risk outweighs the reward, this is not a good starting point.
 
     * Set the variables in the [`config`](/config) directory. You can see what each one does in the directory's [README](/config/README.md).
 
-    * Set the variables in [`terraform/infrastructure/terraform.tfvars`](terraform/infrastructure/terraform.tfvars). Each of the values is documented in that file.
+    * Set the variables in [`infrastructure/terraform/terraform.tfvars`](infrastructure/terraform/terraform.tfvars). Each of the values is documented in that file.
 
   3. **Perform the setup steps that can't be codified in manifests.** The aspiration of this project is to require no manual steps beyond what's reasonable to effect changes to the system; essentially, applying manifests. However, it's currently not possible to automate every single step, so you'll need to perform a few manual steps for now:
 
